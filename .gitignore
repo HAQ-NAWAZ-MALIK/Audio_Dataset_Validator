@@ -40,5 +40,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Dataset folder (user data - created at runtime)
-/dataset/
+# Dataset user data (ignore files, keep folder structure)
+/dataset/audio/*
+!/dataset/audio/.gitkeep
+/dataset/transcriptions/*
+!/dataset/transcriptions/.gitkeep
+/dataset/metadata/*
+!/dataset/metadata/.gitkeep
+/dataset/fonts/*
+!/dataset/fonts/.gitkeep

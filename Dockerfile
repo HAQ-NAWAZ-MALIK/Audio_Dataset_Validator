@@ -1,4 +1,4 @@
-FROM node:18-alpine AS base
+FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -29,37 +29,26 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Create a non-root user with UID 1000 (required for HF Spaces)
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1000 nextjs
-
 # Copy public folder
 COPY --from=builder /app/public ./public
 
 # Copy built application
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
 # Create /data directory for HF Spaces persistent storage
-# This directory is mounted at runtime on HF Spaces
 RUN mkdir -p /data && chmod 777 /data
 
-# Create local dataset directory as fallback (for non-HF environments)
-RUN mkdir -p /app/dataset && chown nextjs:nodejs /app/dataset
+# Create local dataset directory as fallback
+RUN mkdir -p /app/dataset && chmod 777 /app/dataset
 
-# Set default data directory (overridden by HF Spaces when /data is available)
+# Set default data directory
 ENV DATA_DIR=/data
-
-USER nextjs
 
 # HF Spaces uses port 7860 by default
 EXPOSE 7860
 
 ENV PORT=7860
 ENV HOSTNAME="0.0.0.0"
-
-# Health check for container monitoring
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:7860/ || exit 1
 
 CMD ["node", "server.js"]
