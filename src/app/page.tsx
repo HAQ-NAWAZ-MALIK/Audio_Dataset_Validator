@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import HelpModal from '@/components/HelpModal';
+import QuickTourPopup from '@/components/QuickTourPopup';
 
 
 import TextInput from '@/components/TextInput';
@@ -424,6 +425,7 @@ export default function Home() {
         datasetName={datasetName}
       />
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <QuickTourPopup />
     </main>
   );
 }
