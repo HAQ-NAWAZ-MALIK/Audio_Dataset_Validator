@@ -1,43 +1,37 @@
 import type { Metadata } from "next";
-import { DM_Sans, Playfair_Display, JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import { Providers } from "@/components/Providers";
+import { Toaster } from "sonner";
 
-const dmSans = DM_Sans({
-  subsets: ["latin"],
-  variable: '--font-dm-sans',
-  display: 'swap',
-});
-
-const playfair = Playfair_Display({
-  subsets: ["latin"],
-  variable: '--font-playfair',
-  display: 'swap',
-});
-
-const jetbrains = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: '--font-jetbrains',
-  display: 'swap',
-});
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "TTS Dataset Collector - Build Speech Datasets",
-  description: "Advanced TTS Dataset Collection Tool",
+    title: "Audio Dataset Validator",
+    description: "Professional audio quality analysis for TTS/ASR datasets",
 };
 
 export default function RootLayout({
-  children,
+    children,
 }: Readonly<{
-  children: React.ReactNode;
+    children: React.ReactNode;
 }>) {
-  return (
-    <html lang="en" className="dark">
-      <body className={`${dmSans.variable} ${playfair.variable} ${jetbrains.variable} font-sans antialiased bg-background text-foreground min-h-screen selection:bg-primary/30 selection:text-primary-foreground`}>
-        <Providers>
-          {children}
-        </Providers>
-      </body>
-    </html>
-  );
+    return (
+        <html lang="en" suppressHydrationWarning>
+            <body className={`${inter.className} gradient-bg min-h-screen`}>
+                {children}
+                <Toaster
+                    position="bottom-right"
+                    richColors
+                    closeButton
+                    toastOptions={{
+                        style: {
+                            background: 'hsl(var(--card))',
+                            border: '1px solid hsl(var(--border))',
+                            color: 'hsl(var(--foreground))',
+                        },
+                    }}
+                />
+            </body>
+        </html>
+    );
 }

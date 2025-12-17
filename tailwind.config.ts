@@ -9,11 +9,6 @@ const config: Config = {
     ],
     theme: {
         extend: {
-            fontFamily: {
-                sans: ["var(--font-dm-sans)", "sans-serif"],
-                serif: ["var(--font-playfair)", "serif"],
-                mono: ["var(--font-jetbrains)", "monospace"],
-            },
             colors: {
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",
@@ -40,9 +35,13 @@ const config: Config = {
                     DEFAULT: "hsl(var(--accent))",
                     foreground: "hsl(var(--accent-foreground))",
                 },
-                popover: {
-                    DEFAULT: "hsl(var(--popover))",
-                    foreground: "hsl(var(--popover-foreground))",
+                success: {
+                    DEFAULT: "hsl(var(--success))",
+                    foreground: "hsl(var(--success-foreground))",
+                },
+                warning: {
+                    DEFAULT: "hsl(var(--warning))",
+                    foreground: "hsl(var(--warning-foreground))",
                 },
                 card: {
                     DEFAULT: "hsl(var(--card))",
@@ -54,8 +53,12 @@ const config: Config = {
                 md: "calc(var(--radius) - 2px)",
                 sm: "calc(var(--radius) - 4px)",
             },
+            backdropBlur: {
+                xs: "2px",
+            },
         },
     },
     plugins: [],
 };
+
 export default config;

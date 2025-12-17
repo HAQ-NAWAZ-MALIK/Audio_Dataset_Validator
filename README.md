@@ -1,47 +1,54 @@
 ---
-title: TTS Dataset Collector
-emoji: 🎙️
-colorFrom: purple
-colorTo: blue
+title: Audio Dataset Validator
+emoji: 🎚️
+colorFrom: indigo
+colorTo: purple
 sdk: docker
 app_file: Dockerfile
 app_port: 7860
 pinned: false
 ---
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎚️ Audio Dataset Validator
 
-## Getting Started
+A professional-grade audio quality analysis tool for TTS/ASR dataset creators.
 
-First, run the development server:
+## ✨ Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- 📊 **Quality Analysis**: Sample rate, channels, duration, bit depth, RMS level
+- 🔍 **Issue Detection**: Silence, clipping, low volume, DC offset, stereo detection
+- 🌊 **4 Visualization Modes**: Waveform, Bars, Mirror, Spectrogram
+- 📈 **Health Score**: 0-100 quality rating per file
+- ✨ **AI Auto-Clean**: One-click optimization with research-standard parameters
+- 🔧 **Audio Processor**: Normalize, Trim Silence, Noise Gate, DC Offset removal
+- 📥 **Download Processed**: Export cleaned audio as WAV (original or 22kHz TTS)
+- 📁 **Batch Processing**: Analyze multiple files at once
+- 📤 **Export Reports**: JSON/CSV output
+- 📖 **Built-in Guide**: Audio standards reference
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Usage
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Drag & drop audio files (WAV, MP3, FLAC, OGG)
+2. View analysis results instantly
+3. Use AI Auto-Clean or manual processing to fix issues
+4. Download processed audio file
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🎯 Audio Standards (TTS/ASR)
 
-## Learn More
+- **Sample Rate**: 22,050 Hz or 44,100 Hz
+- **Channels**: Mono (1 channel)
+- **Bit Depth**: 16-bit
+- **Peak Level**: -3 dB to -1 dB
+- **Duration**: 1-15 seconds
+- **Leading Silence**: < 0.1s
 
-To learn more about Next.js, take a look at the following resources:
+## 🛠️ Tech Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Next.js 14 + TypeScript
+- Web Audio API
+- Tailwind CSS + Glassmorphism UI
+- Framer Motion animations
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 👤 Author
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Created by [HAQ-NAWAZ-MALIK](https://github.com/HAQ-NAWAZ-MALIK/)

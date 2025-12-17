@@ -1,431 +1,351 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import HelpModal from '@/components/HelpModal';
-import QuickTourPopup from '@/components/QuickTourPopup';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import Header from '@/components/Header';
+import AudioDropzone from '@/components/AudioDropzone';
+import FileList from '@/components/FileList';
+import AnalysisPanel from '@/components/AnalysisPanel';
+import SummaryCard from '@/components/SummaryCard';
+import WaveformViewer from '@/components/WaveformViewer';
+import AudioProcessor from '@/components/AudioProcessor';
+import { AudioFile } from '@/types/audio';
+import { analyzeAudio } from '@/lib/audioAnalyzer';
+import { Waves, BarChart3, Activity, Radio } from 'lucide-react';
 
-
-import TextInput from '@/components/TextInput';
-import AudioRecorder from '@/components/AudioRecorder';
-import FontSelector from '@/components/FontSelector';
-import DatasetStats from '@/components/DatasetStats';
-import SettingsModal from '@/components/SettingsModal';
-import { Mic2, Moon, Sun, Settings, Search, SkipForward, SkipBack, Bookmark, Hash, HelpCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { toast } from 'sonner';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import { detectLanguage, isRTL } from '@/lib/language';
+type ViewMode = 'waveform' | 'bars' | 'mirror' | 'spectrum';
 
 export default function Home() {
-  const [sentences, setSentences] = useState<string[]>([]);
-  const [currentIndex, setCurrentIndex] = useLocalStorage('currentIndex', 0);
-  const [speakerId, setSpeakerId] = useLocalStorage('speakerId', '');
-  const [datasetName, setDatasetName] = useLocalStorage('datasetName', 'dataset1');
-  const [fontStyle, setFontStyle] = useLocalStorage('fontStyle', 'Times New Roman');
-  const [fontFamily, setFontFamily] = useState('Times New Roman'); // Actual CSS font family
-  const [darkMode, setDarkMode] = useLocalStorage('darkMode', true);
+    const [files, setFiles] = useState<AudioFile[]>([]);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
 
-  // Settings
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [autoAdvance, setAutoAdvance] = useLocalStorage('autoAdvance', true);
-  const [autoSave, setAutoSave] = useLocalStorage('autoSave', false);
-  const [silenceThreshold, setSilenceThreshold] = useLocalStorage('silenceThreshold', 5);
+    // Audio playback state
+    const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [viewMode, setViewMode] = useState<ViewMode>('waveform');
 
-  // Navigation & Search
-  const [jumpIndex, setJumpIndex] = useState('');
-  const [bookmarks, setBookmarks] = useState<number[]>([]);
-  const [detectedLang, setDetectedLang] = useState('eng');
-  const [isRTLDir, setIsRTLDir] = useState(false);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+    const startTimeRef = useRef<number>(0);
+    const animationRef = useRef<number>(0);
 
-  useEffect(() => {
-    if (sentences.length > 0 && sentences[currentIndex]) {
-      const lang = detectLanguage(sentences[currentIndex]);
-      setDetectedLang(lang);
-      setIsRTLDir(isRTL(lang));
-    }
-  }, [currentIndex, sentences]);
+    // Load audio buffer when file changes
+    useEffect(() => {
+        const loadAudioBuffer = async () => {
+            const selectedFile = files.find(f => f.id === selectedId);
+            if (!selectedFile) {
+                setAudioBuffer(null);
+                return;
+            }
 
-  const [searchQuery, setSearchQuery] = useState('');
+            try {
+                const ctx = new AudioContext();
+                const arrayBuffer = await selectedFile.file.arrayBuffer();
+                const buffer = await ctx.decodeAudioData(arrayBuffer);
+                setAudioBuffer(buffer);
+                audioContextRef.current = ctx;
+            } catch (error) {
+                console.error('Failed to load audio:', error);
+            }
+        };
 
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [darkMode]);
+        loadAudioBuffer();
+        return () => {
+            if (audioContextRef.current) {
+                audioContextRef.current.close();
+            }
+        };
+    }, [selectedId, files]);
 
-  useEffect(() => {
-    if (speakerId && datasetName) {
-      fetch(`/api/bookmarks?speaker_id=${speakerId}&dataset_name=${datasetName}`)
-        .then(res => res.json())
-        .then(data => setBookmarks(data.bookmarks || []));
-    }
-  }, [speakerId, datasetName]);
+    // Animation loop for playhead
+    useEffect(() => {
+        if (isPlaying && audioContextRef.current) {
+            const updateTime = () => {
+                const elapsed = audioContextRef.current!.currentTime - startTimeRef.current;
+                setCurrentTime(elapsed);
 
-  // Keyboard Shortcuts
-  useKeyboardShortcuts({
-    'arrowright': () => handleNext(),
-    'arrowleft': () => handlePrev(),
-    'ctrl+s': () => document.getElementById('save-btn')?.click(),
-    ' ': () => document.getElementById('record-btn')?.click(),
-    'ctrl+f': () => document.getElementById('search-input')?.focus(),
-  });
+                if (audioBuffer && elapsed >= audioBuffer.duration) {
+                    setIsPlaying(false);
+                    setCurrentTime(0);
+                } else {
+                    animationRef.current = requestAnimationFrame(updateTime);
+                }
+            };
+            animationRef.current = requestAnimationFrame(updateTime);
+        }
 
-  const handleSentencesLoaded = (loadedSentences: string[]) => {
-    setSentences(loadedSentences);
-    setCurrentIndex(0);
-  };
+        return () => {
+            if (animationRef.current) {
+                cancelAnimationFrame(animationRef.current);
+            }
+        };
+    }, [isPlaying, audioBuffer]);
 
-  const handleNext = () => {
-    if (currentIndex < sentences.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-    } else {
-      toast.info('Reached end of sentences');
-    }
-  };
+    const handlePlayPause = useCallback(() => {
+        if (!audioBuffer || !audioContextRef.current) return;
 
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(prev => prev - 1);
-    }
-  };
+        if (isPlaying) {
+            sourceNodeRef.current?.stop();
+            setIsPlaying(false);
+        } else {
+            const source = audioContextRef.current.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContextRef.current.destination);
+            source.onended = () => setIsPlaying(false);
 
-  const handleJump = (e: React.FormEvent) => {
-    e.preventDefault();
-    const idx = parseInt(jumpIndex) - 1;
-    if (idx >= 0 && idx < sentences.length) {
-      setCurrentIndex(idx);
-      setJumpIndex('');
-    } else {
-      toast.error('Invalid sentence number');
-    }
-  };
+            startTimeRef.current = audioContextRef.current.currentTime - currentTime;
+            source.start(0, currentTime);
+            sourceNodeRef.current = source;
+            setIsPlaying(true);
+        }
+    }, [audioBuffer, isPlaying, currentTime]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery) return;
+    const handleSeek = useCallback((time: number) => {
+        setCurrentTime(time);
+        if (isPlaying) {
+            sourceNodeRef.current?.stop();
 
-    // Find next occurrence after current index
-    let nextIndex = sentences.findIndex((s, i) => i > currentIndex && s.toLowerCase().includes(searchQuery.toLowerCase()));
+            if (audioBuffer && audioContextRef.current) {
+                const source = audioContextRef.current.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContextRef.current.destination);
+                source.onended = () => setIsPlaying(false);
 
-    // If not found, wrap around
-    if (nextIndex === -1) {
-      nextIndex = sentences.findIndex((s) => s.toLowerCase().includes(searchQuery.toLowerCase()));
-    }
+                startTimeRef.current = audioContextRef.current.currentTime - time;
+                source.start(0, time);
+                sourceNodeRef.current = source;
+            }
+        }
+    }, [audioBuffer, isPlaying]);
 
-    if (nextIndex !== -1) {
-      setCurrentIndex(nextIndex);
-      toast.success(`Found match at #${nextIndex + 1}`);
-    } else {
-      toast.error('No matches found');
-    }
-  };
+    const handleReset = useCallback(() => {
+        if (isPlaying) {
+            sourceNodeRef.current?.stop();
+            setIsPlaying(false);
+        }
+        setCurrentTime(0);
+    }, [isPlaying]);
 
-  const handleSkip = async () => {
-    try {
-      const res = await fetch('/api/skip-recording', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          speaker_id: speakerId,
-          dataset_name: datasetName,
-          index: currentIndex,
-          text: sentences[currentIndex],
-          reason: 'User skipped'
-        })
-      });
+    const handleFilesAdded = useCallback(async (newFiles: File[]) => {
+        const audioFiles: AudioFile[] = newFiles.map((file) => ({
+            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            file,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            status: 'pending' as const,
+        }));
 
-      if (res.ok) {
-        toast.info('Sentence skipped');
-        handleNext();
-      } else {
-        toast.error('Failed to skip');
-      }
-    } catch (err) {
-      toast.error('Error skipping');
-    }
-  };
+        setFiles((prev) => [...prev, ...audioFiles]);
 
-  const handleFontChange = (font: string) => {
-    setFontStyle(font);
-    setFontFamily(font);
-  };
+        if (!selectedId && audioFiles.length > 0) {
+            setSelectedId(audioFiles[0].id);
+        }
 
-  const toggleBookmark = async () => {
-    try {
-      const res = await fetch('/api/bookmarks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ speaker_id: speakerId, dataset_name: datasetName, index: currentIndex })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setBookmarks(data.bookmarks);
-        toast.success(bookmarks.includes(currentIndex) ? 'Bookmark removed' : 'Bookmarked');
-      }
-    } catch (err) {
-      toast.error('Failed to toggle bookmark');
-    }
-  };
+        setIsProcessing(true);
 
-  return (
-    <main className="min-h-screen pb-20 transition-colors duration-300 bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
-        <div className="container py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20">
-              <Mic2 className="w-6 h-6" />
-            </div>
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-400">
-              TTS Dataset Collector
-            </h1>
-          </div>
+        for (const audioFile of audioFiles) {
+            setFiles((prev) =>
+                prev.map((f) =>
+                    f.id === audioFile.id ? { ...f, status: 'analyzing' as const } : f
+                )
+            );
 
-          <div className="flex items-center gap-3">
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/50 text-sm font-medium">
-              <span className="opacity-70">Sentence</span>
-              <span className="text-primary">{currentIndex + 1}</span>
-              <span className="opacity-40">/</span>
-              <span className="opacity-70">{sentences.length || 0}</span>
-            </div>
+            try {
+                const analysis = await analyzeAudio(audioFile.file);
 
-            <button
-              onClick={() => setIsHelpOpen(true)}
-              className="btn btn-ghost rounded-full w-10 h-10 p-0"
-              title="Help"
-            >
-              <HelpCircle className="w-5 h-5" />
-            </button>
+                setFiles((prev) =>
+                    prev.map((f) =>
+                        f.id === audioFile.id
+                            ? { ...f, status: 'done' as const, analysis }
+                            : f
+                    )
+                );
+            } catch (error) {
+                console.error('Analysis error:', error);
+                setFiles((prev) =>
+                    prev.map((f) =>
+                        f.id === audioFile.id
+                            ? {
+                                ...f,
+                                status: 'error' as const,
+                                error: error instanceof Error ? error.message : 'Analysis failed',
+                            }
+                            : f
+                    )
+                );
+            }
+        }
 
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="btn btn-ghost rounded-full w-10 h-10 p-0"
-              title="Settings"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
+        setIsProcessing(false);
+    }, [selectedId]);
 
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="btn btn-ghost rounded-full w-10 h-10 p-0"
-              title="Toggle Dark Mode"
-            >
-              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
-          </div>
-        </div>
-      </header>
+    const handleSelectFile = useCallback((id: string) => {
+        setSelectedId(id);
+        setCurrentTime(0);
+        setIsPlaying(false);
+    }, []);
 
-      <div className="container grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8">
-        {/* Left Sidebar */}
-        <div className="lg:col-span-4 space-y-6">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Configuration</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="label">Speaker ID</label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="e.g. spk_001"
-                    value={speakerId}
-                    onChange={(e) => setSpeakerId(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="label">Dataset Name</label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="e.g. common_voice"
-                    value={datasetName}
-                    onChange={(e) => setDatasetName(e.target.value)}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+    const handleRemoveFile = useCallback((id: string) => {
+        setFiles((prev) => prev.filter((f) => f.id !== id));
+        if (selectedId === id) {
+            setSelectedId(null);
+            setAudioBuffer(null);
+        }
+    }, [selectedId]);
 
-          <FontSelector currentFont={fontStyle} onFontChange={handleFontChange} />
+    const handleClearAll = useCallback(() => {
+        setFiles([]);
+        setSelectedId(null);
+        setAudioBuffer(null);
+    }, []);
 
-          <TextInput onSentencesLoaded={handleSentencesLoaded} />
+    const handleProcessedBuffer = useCallback((buffer: AudioBuffer) => {
+        setAudioBuffer(buffer);
+    }, []);
 
-          <DatasetStats />
-        </div>
+    const selectedFile = files.find((f) => f.id === selectedId) || null;
 
-        {/* Main Content */}
-        <div className="lg:col-span-8 space-y-6">
-          <AnimatePresence mode="wait">
-            {sentences.length > 0 ? (
-              <motion.div
-                key="content"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-6"
-              >
-                {/* Navigation Bar */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                  <form onSubmit={handleJump} className="flex items-center gap-2">
-                    <div className="relative">
-                      <Hash className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
-                      <input
-                        type="number"
-                        className="input w-24 pl-9"
-                        placeholder="Jump"
-                        value={jumpIndex}
-                        onChange={(e) => setJumpIndex(e.target.value)}
-                      />
-                    </div>
-                  </form>
+    // Get highlight regions for waveform
+    const getHighlightRegions = () => {
+        if (!selectedFile?.analysis) return [];
+        const regions = [];
 
-                  <form onSubmit={handleSearch} className="flex items-center gap-2">
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
-                      <input
-                        id="search-input"
-                        type="text"
-                        className="input w-32 md:w-48 pl-9"
-                        placeholder="Find text..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
-                    </div>
-                  </form>
+        if (selectedFile.analysis.silenceStart > 0.1) {
+            regions.push({
+                start: 0,
+                end: selectedFile.analysis.silenceStart,
+                color: 'rgba(245, 158, 11, 0.3)',
+                label: 'Silence',
+            });
+        }
 
-                  <div className="flex-1" />
+        if (selectedFile.analysis.silenceEnd > 0.1 && audioBuffer) {
+            regions.push({
+                start: audioBuffer.duration - selectedFile.analysis.silenceEnd,
+                end: audioBuffer.duration,
+                color: 'rgba(245, 158, 11, 0.3)',
+                label: 'Silence',
+            });
+        }
 
-                  <button onClick={() => setCurrentIndex(0)} className="btn btn-secondary text-xs" title="First">
-                    First
-                  </button>
-                  <button onClick={() => setCurrentIndex(sentences.length - 1)} className="btn btn-secondary text-xs" title="Last">
-                    Last
-                  </button>
-                </div>
+        return regions;
+    };
 
-                <Card className="border-primary/20 shadow-lg shadow-primary/5">
-                  <CardContent className="pt-6">
-                    <div className="flex justify-between items-center mb-6">
-                      <div className="flex gap-2">
-                        <Badge variant="outline" className="opacity-70">
-                          SENTENCE {currentIndex + 1}
-                        </Badge>
-                        <Badge variant="secondary" className="opacity-50 text-xs uppercase">
-                          {detectedLang}
-                        </Badge>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          className={cn(
-                            "p-2 rounded-full transition-colors",
-                            bookmarks.includes(currentIndex)
-                              ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
-                              : "hover:bg-secondary opacity-50 hover:opacity-100"
-                          )}
-                          onClick={toggleBookmark}
-                          title="Bookmark"
-                        >
-                          <Bookmark className={cn("w-4 h-4", bookmarks.includes(currentIndex) && "fill-current")} />
-                        </button>
-                      </div>
-                    </div>
+    return (
+        <main className="min-h-screen p-4 md:p-6 lg:p-8">
+            <div className="max-w-7xl mx-auto">
+                <Header />
 
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Left Column - Upload & File List */}
                     <motion.div
-                      key={currentIndex}
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.2 }}
-                      className={cn(
-                        "sentence-display",
-                        isRTLDir && "text-right"
-                      )}
-                      style={{ fontFamily: fontFamily, direction: isRTLDir ? 'rtl' : 'ltr' }}
+                        className="lg:col-span-3 space-y-6"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.3 }}
                     >
-                      {sentences[currentIndex]}
+                        <AudioDropzone
+                            onFilesAdded={handleFilesAdded}
+                            isProcessing={isProcessing}
+                        />
+                        <div className="h-[350px]">
+                            <FileList
+                                files={files}
+                                selectedId={selectedId}
+                                onSelect={handleSelectFile}
+                                onRemove={handleRemoveFile}
+                                onClearAll={handleClearAll}
+                            />
+                        </div>
                     </motion.div>
-                  </CardContent>
-                </Card>
 
-                {currentIndex < sentences.length - 1 && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.6 }}
-                    className="rounded-xl border border-dashed border-border p-4 bg-secondary/10"
-                  >
-                    <div className="text-xs font-bold opacity-50 uppercase tracking-wider mb-2">Next Up</div>
-                    <div
-                      className="text-lg text-center opacity-70 line-clamp-1"
-                      style={{ fontFamily: fontFamily }}
+                    {/* Center Column - Analysis & Waveform */}
+                    <motion.div
+                        className="lg:col-span-6 space-y-6"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: 0.1 }}
                     >
-                      {sentences[currentIndex + 1]}
-                    </div>
-                  </motion.div>
-                )}
+                        {/* View Mode Toggle */}
+                        {audioBuffer && (
+                            <div className="flex items-center justify-center gap-2">
+                                <span className="text-sm text-muted-foreground mr-2">Visualization:</span>
+                                <button
+                                    onClick={() => setViewMode('waveform')}
+                                    className={`btn-icon ${viewMode === 'waveform' ? 'btn-primary' : 'btn-ghost'}`}
+                                    title="Waveform"
+                                >
+                                    <Waves className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('bars')}
+                                    className={`btn-icon ${viewMode === 'bars' ? 'btn-primary' : 'btn-ghost'}`}
+                                    title="Bars"
+                                >
+                                    <BarChart3 className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('mirror')}
+                                    className={`btn-icon ${viewMode === 'mirror' ? 'btn-primary' : 'btn-ghost'}`}
+                                    title="Mirror"
+                                >
+                                    <Activity className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('spectrum')}
+                                    className={`btn-icon ${viewMode === 'spectrum' ? 'btn-primary' : 'btn-ghost'}`}
+                                    title="Spectrogram"
+                                >
+                                    <Radio className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
 
-                <AudioRecorder
-                  speakerId={speakerId}
-                  datasetName={datasetName}
-                  text={sentences[currentIndex]}
-                  fontStyle={fontStyle}
-                  index={currentIndex}
-                  onSaved={() => { }}
-                  onNext={handleNext}
-                  onPrev={handlePrev}
-                  onSkip={handleSkip}
-                  hasPrev={currentIndex > 0}
-                  hasNext={currentIndex < sentences.length - 1}
-                  autoAdvance={autoAdvance}
-                  autoSave={autoSave}
-                  silenceThreshold={silenceThreshold}
-                />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-col items-center justify-center py-20 text-center opacity-70"
-              >
-                <div className="w-24 h-24 bg-secondary/50 rounded-full flex items-center justify-center mb-6">
-                  <Mic2 className="w-10 h-10 text-primary/50" />
+                        {/* Waveform Viewer */}
+                        <WaveformViewer
+                            audioBuffer={audioBuffer}
+                            isPlaying={isPlaying}
+                            currentTime={currentTime}
+                            onPlayPause={handlePlayPause}
+                            onSeek={handleSeek}
+                            onReset={handleReset}
+                            viewMode={viewMode}
+                            highlightRegions={getHighlightRegions()}
+                        />
+
+                        {/* Analysis Panel */}
+                        <div className="h-[400px]">
+                            <AnalysisPanel file={selectedFile} />
+                        </div>
+                    </motion.div>
+
+                    {/* Right Column - Summary & Processor */}
+                    <motion.div
+                        className="lg:col-span-3 space-y-6"
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.3, delay: 0.2 }}
+                    >
+                        <SummaryCard files={files} />
+
+                        <AudioProcessor
+                            audioBuffer={audioBuffer}
+                            filename={selectedFile?.name || 'audio'}
+                            onProcessed={handleProcessedBuffer}
+                        />
+                    </motion.div>
                 </div>
-                <h3 className="text-2xl font-bold mb-3">No Sentences Loaded</h3>
-                <p className="text-lg max-w-md mx-auto text-muted-foreground">
-                  Import a text file or paste content to begin your recording session.
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
 
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        autoAdvance={autoAdvance}
-        setAutoAdvance={setAutoAdvance}
-        autoSave={autoSave}
-        setAutoSave={setAutoSave}
-        silenceThreshold={silenceThreshold}
-        setSilenceThreshold={setSilenceThreshold}
-        datasetName={datasetName}
-      />
-      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-      <QuickTourPopup />
-    </main>
-  );
+                {/* Footer */}
+                <footer className="mt-8 text-center text-sm text-muted-foreground">
+                    <p>
+                        Audio Dataset Validator • Built for TTS/ASR dataset creators
+                    </p>
+                </footer>
+            </div>
+        </main>
+    );
 }
